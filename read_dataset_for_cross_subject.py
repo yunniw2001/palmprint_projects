@@ -1,3 +1,4 @@
+import argparse
 import os
 import random
 import sys
@@ -126,7 +127,11 @@ prepare_transform_for_image()
 
 batch_size = 55
 num_class = 300
-lr = 0.01
+parser = argparse.ArgumentParser(description='my argument')
+args = parser.parse_known_args()[0]
+args.lr = 0.01
+args.num_classes = num_class
+args.alpha = args.lr
 train_dataset = MyDataset('E:\digital_image_processing\data_1\\tongji_cross_subject\\mini_train',
                           'E:\digital_image_processing\data_1\\tongji_cross_subject\\mini_label.txt',
                           preprocessing)
@@ -135,12 +140,12 @@ test_dataset = MyDataset('E:\digital_image_processing\data_1\\tongji_cross_subje
 train_dataloader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
 test_dataloader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=True)
 # 定义网络
-net = ResNet.ResNet20()
+net = ResNet.ResNet20(num_class,s=30,m=0.65,lamda=0.1)
 for param in net.C_LMCL.parameters():
     param.requires_grad = False
 
-criterion = C_LMCL_Loss.CLMCLLoss(batch_size=batch_size, class_num=num_class, m=0.65, s=30, alpha=lr, lamda=0.1)
-optimizer = optim.SGD(net.parameters(), lr=lr)
+criterion = C_LMCL_Loss.CLMCLLoss(batch_size=batch_size, class_num=num_class, m=0.65, s=30, alpha=args.lr, lamda=0.1)
+optimizer = optim.SGD(net.parameters(), lr=args.lr)
 
 epochs = 10
 torch.autograd.set_grad_enabled(True)
@@ -149,22 +154,12 @@ for epoch in range(epochs):
     running_loss = 0.0
     for i, data in enumerate(train_dataloader):
         images, label = data
-        feature = net(images)[0]
+        prec,loss = net(images,label,args)
         # print(net.C_LMCL.weight)
         # print('======')
         # print(net.C_LMCL.weight.data)
-        loss = criterion(feature, net.C_LMCL.weight, label)
         running_loss += loss.item()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        with torch.no_grad():
-            N = batch_size
-            if batch_size > len((label)):
-                N = len(label)
-            for j in range(num_class):
-                net.C_LMCL.weight.data[j] = update_some_center_vector(N, feature, net.C_LMCL.weight.data[j], label, j, lr)
-        net.C_LMCL.grad.zero_()
-        print('[%d  %5d]   loss: %.3f' % (epoch + 1, i + 1, running_loss / 100))
-        running_loss = 0.0
-        sys.exit(0)
+        print('[%d  %5d]   loss: %.3f' % (epoch + 1, i + 1, running_loss))
